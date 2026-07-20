@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Payroll Ledger Exporter</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+ <div class="sidebar">
+    <h2>Payroll System</h2>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="employees.html">Employees</a>
+    <a href="attendance.html" >Attendance</a> 
+    <a href="payroll.html">Payroll</a>
+    <a href="reports.html">Reports</a>
+  </div>
+  
+
+  
+  <div class="main-content">
+    <div id="notify" class="success-banner" style="display:none;"></div>
+    
+    <div class="panel-header">
+      <h1>📊 Payroll Reports Dashboard</h1>
+      <p>Isolate target operational windows to extract legally compliant <strong>CSV ledger audits</strong> instantly.</p>
+    </div>
+
+    <div class="summary-container">
+      <div class="summary-card daily-border"><h4>Daily Summarization</h4><p style="color:#2e7d32;">₱2,500.00</p></div>
+      <div class="summary-card weekly-border"><h4>Weekly Summarization</h4><p style="color:#37474f;">₱47,700.00</p></div>
+      <div class="summary-card monthly-border"><h4>Monthly Summarization</h4><p style="color:#263238;">₱60,000.00</p></div>
+    </div>
+
+    <div class="grid-cards">
+      <div class="action-card">
+        <div>
+          <h4>Daily Payroll Ledger</h4>
+          <p>Isolate active structural metrics by selecting a <strong>specific production calendar date</strong>.</p>
+          <div class="input-container"><label>Target Date:</label><input type="date" id="d-date" value="2026-07-17"></div>
+        </div>
+        <button class="btn-utility" id="btn-exp-daily">📥 Export Daily CSV</button>
+      </div>
+
+      <div class="action-card featured">
+        <span class="card-ribbon">Primary Cycle</span>
+        <div>
+          <h4>Weekly Pay Period Package</h4>
+          <p>Generates granular itemizations containing <strong>required tax fields</strong> appended with a summary row.</p>
+          <div class="input-container"><label>Target Operational Week:</label><input type="week" id="w-week" value="2026-W29"></div>
+        </div>
+        <button class="btn-utility dark" id="btn-exp-weekly">📥 Export Weekly CSV</button>
+      </div>
+
+      <div class="action-card">
+        <div>
+          <h4>Monthly Remittance Run</h4>
+          <p>Compile high-level statutory aggregates matching selected <strong>government billing months</strong>.</p>
+          <div class="input-container"><label>Target Month Threshold:</label><input type="month" id="m-month" value="2026-07"></div>
+        </div>
+        <button class="btn-utility" id="btn-exp-monthly">📥 Export Monthly CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="reports.js"></script>
+</body>
+</html>

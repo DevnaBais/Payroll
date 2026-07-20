@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Weekly Payroll Calculations</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+ <div class="sidebar">
+    <h2>Payroll System</h2>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="employees.html">Employees</a>
+    <a href="attendance.html" >Attendance</a> 
+    <a href="payroll.html">Payroll</a>
+    <a href="reports.html">Reports</a>
+  </div>
+  
+  <div class="top-bar">
+    <div class="top-icon">⣿</div><div class="top-icon">🔔</div>
+  </div>
+  
+  <div class="main-content">
+    <div class="panel-header">
+      <h1>Weekly Payroll Processing</h1>
+
+    </div>
+
+    <div style="margin-bottom:20px; display:flex; gap:12px; align-items:center;">
+      <button class="btn-utility" style="width:auto; padding:8px 16px;" id="btn-scan">📋 Scan & Verify New Hires</button>
+      <span style="font-size:0.9em; color:var(--text-muted);">Filters automatically applied: <strong>Active Employees Only</strong>.</span>
+    </div>
+
+    <div class="table-wrapper">
+      <div style="background:#fafafa; padding:16px; font-weight:800; border-bottom:1px solid #cfd8dc;">Active Workforce Weekly Calculation Sheet</div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Site / Position</th>
+            <th>Hourly Pay (₱)</th>
+            <th>Hours Credited</th>
+            <th>Rate / Day</th>
+            <th>Days Worked</th>
+            <th>OT Hours</th>
+            <th>Gross Pay</th>
+            <!-- Split Gov Ded. Column into 4 explicit units -->
+            <th style="color:#c62828; background:#ffebee;">SSS</th>
+            <th style="color:#c62828; background:#ffebee;">PhilHealth</th>
+            <th style="color:#c62828; background:#ffebee;">Pag-IBIG</th>
+            <th style="color:#c62828; background:#ffcdd2;">Total Ded.</th>
+            <th>Net Pay</th>
+          </tr>
+        </thead>
+        <tbody id="payroll-body">
+          <!-- Dynamic row configurations -->
+        </tbody>
+        <tfoot>
+          <tr style="background:#f5f7f8; font-weight:800; border-top:2px solid #b0bec5;">
+            <td colspan="3" style="text-align:right; padding:12px;">GRAND TOTALS:</td>
+            <td></td>
+            <td id="total-hours">0.00 hrs</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td id="total-gross" style="color:#2e7d32;">₱0.00</td>
+            <td id="total-sss" style="color:#c62828;">₱0.00</td>
+            <td id="total-philhealth" style="color:#c62828;">₱0.00</td>
+            <td id="total-pagibig" style="color:#c62828;">₱0.00</td>
+            <td id="total-deductions" style="color:#c62828;">₱0.00</td>
+            <td id="total-net" style="color:#1565c0; font-size:1.1em;">₱0.00</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div style="display:flex; gap:12px; margin-top:20px;">
+      <button class="btn-utility" style="width:auto; padding:10px 20px; background:#fffde7; border-color:#fbc02d;" id="btn-compute">📊 Compute All Rows</button>
+      <button class="btn-utility" style="width:auto; padding:10px 20px; background:#e8f5e9; border-color:#4caf50;" id="btn-export">📊 Generate Weekly Report (.CSV)</button>
+    </div>
+  </div>
+
+  <script src="payroll.js"></script>
+</body>
+</html>

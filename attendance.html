@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Daily Attendance Logging</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Navigation Sidebar -->
+  <div class="sidebar">
+    <h2>Payroll System</h2>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="employees.html">Employees</a>
+    <a href="attendance.html" class="active">Attendance</a> <!-- FIXED: Active indicator restored -->
+    <a href="payroll.html">Payroll</a>
+    <a href="reports.html">Reports</a>
+  </div>
+  
+
+  <!-- Dynamic Workstation Content Body Canvas -->
+  <div class="main-content">
+    <div class="panel-header">
+      <h1>Daily Attendance Tracking</h1>
+      <p>Log daily shifts and break windows. Inactive employees are automatically excluded.</p>
+    </div>
+
+    <!-- Target Day Selection Config -->
+    <div style="margin-bottom:20px; display:flex; gap:12px; align-items:center;">
+      <label style="font-weight:700; color: #37474f;">Select Day to Log:</label>
+      <select id="attendance-day" style="padding:8px 16px; border-radius:4px; border:1px solid #cfd8dc; font-weight:600;">
+        <option value="Mon">Monday</option>
+        <option value="Tue">Tuesday</option>
+        <option value="Wed">Wednesday</option>
+        <option value="Thu">Thursday</option>
+        <option value="Fri">Friday</option>
+        <option value="Sat">Saturday</option>
+        <option value="Sun">Sunday</option>
+      </select>
+      <span style="font-size:0.9em; color:var(--text-muted);">Status Filter: <strong>Active Profiles Only</strong>.</span>
+    </div>
+
+    <!-- View Layer: Data Table Window -->
+    <div class="table-wrapper">
+      <div style="background:#fafafa; padding:16px; font-weight:800; border-bottom:1px solid #cfd8dc;">Daily Shift Log Sheet</div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Position</th>
+            <th>Time In</th>
+            <th>Time Out</th>
+            <th>Break (Mins)</th>
+            <th>Calculated Hours</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="attendance-body">
+          <!-- Filtered Active Workforce Rows Inject Here dynamically -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Interaction Layer Action Controls (FIXED: Brought inside main-content panel wrapper container) -->
+    <div style="display:flex; gap:12px; justify-content: flex-end; margin-top: 15px;">
+      <!-- FIXED: ID mapped to bind with saveAllRows() listener -->
+      <button class="btn-utility" style="width:auto; padding:10px 20px; background:#fffde7; border-color:#fbc02d;" id="btn-save-all-attendance">💾 Compute and Save All Rows</button>
+      <!-- FIXED: ID mapped to bind with exportDailyCSV() listener -->
+      <button class="btn-utility dark" style="width:auto; padding:10px 20px; background:#e8f5e9; border-color:#4caf50; color: #2e7d32;" id="btn-export-csv">📊 Generate Daily Log (.CSV)</button>
+    </div>
+  </div> <!-- FIXED: Main-content container safely closed here now -->
+
+  <script src="attendance.js"></script>
+</body>
+</html>

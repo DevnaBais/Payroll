@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Workforce Registry</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Navigation Workspace Sidebar Overlay -->
+  <div class="sidebar">
+    <h2>Payroll System</h2>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="employees.html" class="active">Employees</a>
+    <a href="attendance.html">Attendance</a> 
+    <a href="payroll.html">Payroll</a>
+    <a href="reports.html">Reports</a>
+  </div>
+  
+  
+  <!-- Central Workspace Engine Window Template -->
+  <div class="main-content">
+    <div id="alertBox" class="success-banner" style="display:none;"></div>
+    
+    <div class="panel-header">
+      <h1>Workforce Registry</h1>
+      <p>Manage employee operational information, hourly rate structures, and core profile tags.</p>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h3 style="margin:0;">Roster Registry Profiles</h3>
+      <button class="btn-utility" style="width:auto; padding:8px 16px;" id="btn-scroll-add">➕ Onboard Employee</button>
+    </div>
+
+    <!-- Registry View Grid Window Layer -->
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Actions</th>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Site</th>
+            <th>Position</th>
+            <th>Daily Rate</th>
+            <th>Hourly</th>
+            <th style="color:#5678f6;">SSS</th>
+            <th style="color:#5678f6;">PhilHealth</th>
+            <th style="color:#5678f6;">Pag-IBIG</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="emp-table-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Master Action Management Form Component -->
+    <div class="action-card featured" id="form-anchor" style="width:100%; display: none; margin-top: 30px;">
+      <div class="card-ribbon">Registration Form</div>
+      <h3 id="form-title" style="margin-top:0; color:#1976d2; font-size: 1.4em;">Onboard New Employee</h3>
+      
+      <!-- Grid Block Row 1 -->
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:16px;">
+        <div class="input-container">
+          <label>Employee ID</label>
+          <input type="text" id="in-id" value="FAS-">
+        </div>
+        <div class="input-container">
+          <label>Full Name</label>
+          <input type="text" id="in-name" placeholder="LASTNAME, FIRSTNAME">
+        </div>
+        <div class="input-container">
+          <label>Operational Site</label>
+          <input type="text" id="in-site" placeholder="e.g., MANILA HUB">
+        </div>
+        <div class="input-container">
+          <label>Position Designation</label>
+          <input type="text" id="in-pos" placeholder="e.g., FORKLIFT OPERATOR">
+        </div>
+      </div>
+      
+      <!-- Grid Block Row 2: Hourly is manual, Daily is auto-computed -->
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:16px;">
+        <div class="input-container">
+          <label>Hourly Rate (₱)</label>
+          <input type="number" id="in-hourly" placeholder="80.00" step="0.01">
+        </div>
+        <div class="input-container">
+          <label>Daily Base Rate (Auto-Compute)</label>
+          <input type="text" id="in-daily" value="₱0.00" disabled style="background:#f5f5f5;">
+        </div>
+        <div class="input-container">
+          <label>Shift Schedule</label>
+          <input type="text" id="in-shift" placeholder="e.g., 08:00 - 17:00">
+        </div>
+        <div class="input-container">
+          <label>Deployment Status</label>
+          <select id="in-status">
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Grid Block Row 3 -->
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:16px;">
+        <div class="input-container">
+          <label>Original Hire Date (Permanent Lock)</label>
+          <input type="date" id="in-hire">
+        </div>
+        <div class="input-container">
+          <label>Rehire Date</label>
+          <input type="date" id="in-rehire">
+        </div>
+        <div class="input-container">
+          <label>Termination Date</label>
+          <input type="date" id="in-term">
+        </div>
+      </div>
+
+      <!-- Grid Block Row 4 -->
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px;">
+        <div class="input-container">
+          <label>SSS Number (10 Digits)</label>
+          <input type="text" id="in-sss" placeholder="Leave blank if N/A" maxlength="10">
+        </div>
+        <div class="input-container">
+          <label>PhilHealth Number (12 Digits)</label>
+          <input type="text" id="in-philhealth" placeholder="Leave blank if N/A" maxlength="12">
+        </div>
+        <div class="input-container">
+          <label>Pag-IBIG MDF Number (12 Digits)</label>
+          <input type="text" id="in-pagibig" placeholder="Leave blank if N/A" maxlength="12">
+        </div>
+      </div>
+      
+      <div style="display:flex; gap:12px;">
+        <button class="btn-utility dark" style="width:auto; padding:10px 24px;" id="btn-save-hire">💾 Save Parameters</button>
+        <button class="btn-utility" style="width:150px;" id="btn-cancel-add">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="employees.js"></script>
+</body>
+</html>
