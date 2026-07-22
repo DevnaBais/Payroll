@@ -317,6 +317,92 @@ def generate_report():
     })
 
 # ==========================================
+# 📊 DASHBOARD & REPORTS METRICS ENDPOINTS
+# ==========================================
+
+@app.route('/api/dashboard/metrics', methods=['GET'])
+def get_dashboard_metrics():
+    """Provides dynamic calculations for the Dashboard KPI cards."""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # 1. Total active employees
+        cursor.execute("SELECT COUNT(*) FROM employees WHERE status = 'Active'")
+        active_count = cursor.fetchone()[0]
+
+        # 2. Average hourly rate of active workforce
+        cursor.execute("SELECT IFNULL(AVG(hourly_rate), 0) FROM employees WHERE status = 'Active'")
+        avg_rate = cursor.fetchone()[0]
+
+        # 3. Latest weekly gross run from archived payroll logs
+        cursor.execute("SELECT IFNULL(SUM(gross_pay), 0) FROM payroll_archives WHERE archive_period = 'WEEKLY'")
+        gross_weekly = cursor.fetchone()[0]
+
+        # 4. Count of pending runs (active staff who logged hours but haven't been archived yet)
+        cursor.execute("""
+            SELECT COUNT(DISTINCT e.id) 
+            FROM employees e
+            JOIN attendance a ON e.id = a.employee_id
+            WHERE e.status = 'Active'
+        """)
+        pending_runs = cursor.fetchone()[0]
+
+        conn.close()
+
+        return jsonify({
+            "activeWorkforce": active_count,
+            "grossWeekly": round(gross_weekly, 2),
+            "avgHourlyRate": round(avg_rate, 2),
+            "pendingRuns": pending_runs
+        }), 200
+
+    except Exception as e:
+        return jsonify({"message": str(e)}), 400
+
+
+@app.route('/api/reports/summary-totals', methods=['GET'])
+def get_reports_summary_totals():
+    """Provides total payout sums for Daily, Weekly, and Monthly report cards."""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+
+        # Daily sum from active daily attendance multiplied by average rate
+        cursor.execute("""
+            SELECT IFNULL(SUM(a.calculated_hours * e.hourly_rate), 0)
+            FROM attendance a
+            JOIN employees e ON a.employee_id = e.id
+            WHERE a.log_date = DATE('now')
+        """)
+        daily_total = cursor.fetchone()[0]
+
+        # Weekly and Monthly totals from historical payroll archives
+        cursor.execute("SELECT IFNULL(SUM(net_pay), 0) FROM payroll_archives WHERE archive_period = 'WEEKLY'")
+        weekly_total = cursor.fetchone()[0]
+
+        cursor.execute("SELECT IFNULL(SUM(net_pay), 0) FROM payroll_archives WHERE archive_period = 'MONTHLY'")
+        monthly_total = cursor.fetchone()[0]
+
+        # Fallback to weekly sum for monthly if monthly archives are empty
+        if monthly_total == 0 and weekly_total > 0:
+            monthly_total = weekly_total
+
+        conn.close()
+
+        return jsonify({
+            "daily": round(daily_total, 2),
+            "weekly": round(weekly_total, 2),
+            "monthly": round(monthly_total, 2)
+        }), 200
+
+    except Exception as e:
+        return jsonify({"message": str(e)}), 400
+
+
+
+# ==========================================
 # 🚀 SYSTEM DEPLOYMENT TRIGGER RUNNER
 # ==========================================
 

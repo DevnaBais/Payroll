@@ -1,28 +1,38 @@
-// 🧼 Cleaned for Production Deployment (Mock Data Removed)
+// Automatically set the date picker to the current day on load
+function setDefaultDate() {
+  const dateInput = document.getElementById('attendance-day');
+  if (dateInput && !dateInput.value) {
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.value = today;
+  }
+}
+
 async function loadAttendanceSheet() {
   const tbody = document.getElementById('attendance-body');
   if (!tbody) return;
   tbody.innerHTML = '';
 
-  const selectedDay = document.getElementById('attendance-day').value;
+  const selectedDate = document.getElementById('attendance-day').value;
+  if (!selectedDate) return;
 
   try {
-    // Queries the live database roster configuration details from your backend maps
-    const response = await fetch(`/api/attendance/day?day=${selectedDay}`);
+    // Queries the live database roster using the clean calendar date
+    const response = await fetch(`/api/attendance/day?day=${selectedDate}`);
     if (!response.ok) throw new Error("Could not pull attendance matrix items.");
     
     const activeStaff = await response.json();
 
     activeStaff.forEach(emp => {
-      // Pulls dynamic database configurations directly
       const savedHours = parseFloat(emp.loggedHours) || 0;
       const timeInValue = emp.timeIn || "08:00";
       const timeOutValue = emp.timeOut || "17:00";
       const breakValue = emp.breakMins !== undefined ? emp.breakMins : 60;
 
+      // ADDED: Renders the active date cleanly right next to the ID token marker 
       tbody.innerHTML += `
         <tr data-id="${emp.id}">
           <td style="font-weight:700; color:#1565c0;">${emp.id}</td>
+          <td style="font-weight:600; color:#546e7a;">${selectedDate}</td>
           <td style="font-weight:700;">${emp.name}</td>
           <td>${emp.pos}</td>
           <td><input type="time" class="input-inline attn-in" value="${timeInValue}"></td>
@@ -36,6 +46,7 @@ async function loadAttendanceSheet() {
       `;
     });
 
+    // Rebind calculated dynamically added operational events
     document.querySelectorAll('.save-row-btn').forEach(btn => {
       btn.addEventListener('click', function() {
         saveEmployeeRow(this.closest('tr'));
@@ -52,15 +63,17 @@ function calculateRowHours(row) {
   const timeIn = row.querySelector('.attn-in').value;
   const timeOut = row.querySelector('.attn-out').value;
   const breakMins = parseFloat(row.querySelector('.attn-break').value) || 0;
+  const selectedDate = document.getElementById('attendance-day').value;
 
-  if (!timeIn || !timeOut) return null;
+  if (!timeIn || !timeOut || !selectedDate) return null;
 
-  const todayStr = "2026-01-01"; 
-  const dateIn = new Date(`${todayStr} ${timeIn}`);
-  let dateOut = new Date(`${todayStr} ${timeOut}`);
+  // Uses the actual selected date calendar baseline for accurate day evaluations
+  const dateIn = new Date(`${selectedDate}T${timeIn}`);
+  let dateOut = new Date(`${selectedDate}T${timeOut}`);
 
+  // Night shift handling: If Time Out is chronologically earlier than Time In, push it to the next morning
   if (dateOut < dateIn) {
-    dateOut = new Date("2026-01-02 " + timeOut);
+    dateOut.setDate(dateOut.getDate() + 1);
   }
 
   const timeDiffMs = dateOut - dateIn;
@@ -72,7 +85,7 @@ function calculateRowHours(row) {
 
 async function saveEmployeeRow(row) {
   const employeeId = row.getAttribute('data-id');
-  const selectedDay = document.getElementById('attendance-day').value;
+  const selectedDate = document.getElementById('attendance-day').value;
   const finalHours = calculateRowHours(row);
 
   if (finalHours === null) {
@@ -82,7 +95,7 @@ async function saveEmployeeRow(row) {
 
   const payload = {
     id: employeeId,
-    day: selectedDay,
+    day: selectedDate, // Sends full 'YYYY-MM-DD' structure upstream
     timeIn: row.querySelector('.attn-in').value,
     timeOut: row.querySelector('.attn-out').value,
     breakMins: parseFloat(row.querySelector('.attn-break').value) || 0,
@@ -111,7 +124,7 @@ async function saveAllRows() {
   const rows = document.querySelectorAll('#attendance-body tr');
   if (rows.length === 0) return;
 
-  const selectedDay = document.getElementById('attendance-day').value;
+  const selectedDate = document.getElementById('attendance-day').value;
   const packagePayload = [];
   let hasErrors = false;
 
@@ -122,7 +135,7 @@ async function saveAllRows() {
     if (finalHours !== null) {
       packagePayload.push({
         id: employeeId,
-        day: selectedDay,
+        day: selectedDate,
         timeIn: row.querySelector('.attn-in').value,
         timeOut: row.querySelector('.attn-out').value,
         breakMins: parseFloat(row.querySelector('.attn-break').value) || 0,
@@ -141,7 +154,7 @@ async function saveAllRows() {
     const response = await fetch('/api/attendance/save-all', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ day: selectedDay, logs: packagePayload })
+      body: JSON.stringify({ day: selectedDate, logs: packagePayload })
     });
 
     if (!response.ok) throw new Error("Server engine calculation database batch error.");
@@ -158,7 +171,7 @@ async function saveAllRows() {
 }
 
 function exportDailyCSV() {
-  const selectedDay = document.getElementById('attendance-day').value;
+  const selectedDate = document.getElementById('attendance-day').value;
   const rows = document.querySelectorAll('#attendance-body tr');
   
   if (rows.length === 0) {
@@ -166,18 +179,20 @@ function exportDailyCSV() {
     return;
   }
 
-  let csvContent = "EMPLOYEE ID,FULL NAME,DESIGNATED POSITION,TIME IN,TIME OUT,BREAK (MINS),CALCULATED HOURS\n";
+  // UPDATED: Shifted structure headers to now account for the data tracking column
+  let csvContent = "EMPLOYEE ID,LOGGED DATE,FULL NAME,DESIGNATED POSITION,TIME IN,TIME OUT,BREAK (MINS),CALCULATED HOURS\n";
 
   rows.forEach(row => {
     const id = row.cells[0].textContent.trim();
-    const name = row.cells[1].textContent.trim();
-    const position = row.cells[2].textContent.trim();
+    const loggedDate = row.cells[1].textContent.trim(); // ADDED: Grabs the new column value
+    const name = row.cells[2].textContent.trim();       // UPDATED: Shifted from cell 1 to index 2
+    const position = row.cells[3].textContent.trim();   // UPDATED: Shifted from cell 2 to index 3
     const timeIn = row.querySelector('.attn-in').value;
     const timeOut = row.querySelector('.attn-out').value;
     const breakMins = row.querySelector('.attn-break').value;
     const computedHours = row.querySelector('.row-calculated-hours').textContent.replace(' hrs', '').trim();
 
-    csvContent += `"${id}","${name}","${position}","${timeIn}","${timeOut}","${breakMins}","${computedHours}"\n`;
+    csvContent += `"${id}","${loggedDate}","${name}","${position}","${timeIn}","${timeOut}","${breakMins}","${computedHours}"\n`;
   });
 
   const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: "text/csv;charset=utf-8;" });
@@ -185,7 +200,7 @@ function exportDailyCSV() {
   const link = document.createElement("a");
   
   link.setAttribute("href", url);
-  link.setAttribute("download", `Daily_Attendance_Report_${selectedDay}.csv`);
+  link.setAttribute("download", `Daily_Attendance_Report_${selectedDate}.csv`);
   link.style.visibility = 'hidden';
   
   document.body.appendChild(link);
@@ -194,6 +209,7 @@ function exportDailyCSV() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  setDefaultDate();
   loadAttendanceSheet();
   
   document.getElementById('attendance-day').addEventListener('change', loadAttendanceSheet);

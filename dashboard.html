@@ -6,15 +6,14 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
- <div class="sidebar">
+  <div class="sidebar">
     <h2>Payroll System</h2>
-    <a href="dashboard.html">Dashboard</a>
+    <a href="dashboard.html" class="active">Dashboard</a>
     <a href="employees.html">Employees</a>
-    <a href="attendance.html" >Attendance</a> 
+    <a href="attendance.html">Attendance</a> 
     <a href="payroll.html">Payroll</a>
     <a href="reports.html">Reports</a>
   </div>
-  
   
   <div class="main-content">
     <div class="panel-header">
@@ -25,19 +24,19 @@
     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 35px;">
       <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #cfd8dc; border-left: 4px solid #1976d2;">
         <h4 style="margin:0 0 5px 0; text-transform:uppercase; color:#78909c; font-size:0.8em;">Active Workforce</h4>
-        <p style="margin:0; font-size:1.8em; font-weight:800;">3 Hires</p>
+        <p id="kpi-active-workforce" style="margin:0; font-size:1.8em; font-weight:800;">0 Hires</p>
       </div>
       <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #cfd8dc; border-left: 4px solid #2e7d32;">
         <h4 style="margin:0 0 5px 0; text-transform:uppercase; color:#78909c; font-size:0.8em;">Gross Weekly Run</h4>
-        <p style="margin:0; font-size:1.8em; font-weight:800;">₱47,700.00</p>
+        <p id="kpi-gross-weekly" style="margin:0; font-size:1.8em; font-weight:800;">₱0.00</p>
       </div>
       <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #cfd8dc; border-left: 4px solid #fbc02d;">
         <h4 style="margin:0 0 5px 0; text-transform:uppercase; color:#78909c; font-size:0.8em;">Avg Hourly Rate</h4>
-        <p style="margin:0; font-size:1.8em; font-weight:800;">₱93.91</p>
+        <p id="kpi-avg-rate" style="margin:0; font-size:1.8em; font-weight:800;">₱0.00</p>
       </div>
       <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #cfd8dc; border-left: 4px solid #e53935;">
         <h4 style="margin:0 0 5px 0; text-transform:uppercase; color:#78909c; font-size:0.8em;">Pending Runs</h4>
-        <p style="margin:0; font-size:1.8em; font-weight:800;">1 Active</p>
+        <p id="kpi-pending-runs" style="margin:0; font-size:1.8em; font-weight:800;">0 Active</p>
       </div>
     </div>
 
@@ -55,5 +54,7 @@
       </div>
     </div>
   </div>
+
+  <script src="dashboard.js"></script>
 </body>
 </html>
