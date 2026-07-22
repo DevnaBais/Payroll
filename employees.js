@@ -1,4 +1,3 @@
-// 🧼 Cleaned for Production Deployment (Mock Data Removed)
 let employees = [];
 let currentEditId = null;
 
@@ -48,6 +47,7 @@ function render() {
   employees.forEach(e => {
     const displaySite = e.site || 'N/A';
     const displayPos = e.pos || 'N/A';
+    const payCycle = e.payCycle || 'Weekly'; // Dynamic fallback for payroll cycle
     
     const hourly = parseFloat(e.hourlyRate) || 0;
     const daily = parseFloat(e.dailyRate) || (hourly * 8) || 0;
@@ -57,12 +57,17 @@ function render() {
     const pagibig = e.pagibig || 'N/A';
     const status = e.status || 'Active';
 
+    const cycleBadge = payCycle === 'Semi-Monthly' 
+      ? `<span style="background:#e3f2fd; color:#0d47a1; padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.85em;">Semi-Monthly</span>`
+      : `<span style="background:#e8f5e9; color:#1b5e20; padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.85em;">Weekly</span>`;
+
     tbody.innerHTML += `<tr>
       <td><button class="btn-utility edit-btn" style="padding:4px 8px; background:#ffb300; color:white; border:none; cursor:pointer;" data-id="${e.id}">Edit</button></td>
       <td style="font-weight:700; color:#1565c0;">${e.id}</td>
       <td style="font-weight:700;">${e.name}</td>
       <td>${displaySite}</td>
       <td>${displayPos}</td>
+      <td>${cycleBadge}</td>
       <td>₱${daily.toFixed(2)}</td>
       <td style="font-weight:700;">₱${hourly.toFixed(2)}</td>
       <td>${sss}</td>
@@ -88,6 +93,7 @@ function startEdit(id) {
   document.getElementById('in-name').value = emp.name;
   document.getElementById('in-site').value = emp.site || '';
   document.getElementById('in-pos').value = emp.pos || '';
+  document.getElementById('in-cycle').value = emp.payCycle || 'Weekly';
   
   const rawHourly = parseFloat(emp.hourlyRate) || 0;
   const rawDaily = rawHourly * 8;
@@ -115,6 +121,7 @@ async function saveHire() {
     const nameInput = document.getElementById('in-name').value.trim().toUpperCase();
     const siteInput = document.getElementById('in-site').value.trim().toUpperCase();
     const posInput = document.getElementById('in-pos').value.trim().toUpperCase();
+    const cycleInput = document.getElementById('in-cycle').value;
     const hourlyInput = parseFloat(document.getElementById('in-hourly').value);
     const shiftInput = document.getElementById('in-shift').value.trim().toUpperCase();
     const hireInput = document.getElementById('in-hire').value;
@@ -160,6 +167,7 @@ async function saveHire() {
       name: nameInput,
       site: siteInput,
       pos: posInput,
+      payCycle: cycleInput, // Included in saved payload
       dailyRate: computedDaily,
       hourlyRate: hourlyInput,
       shift: shiftInput || "08:00 - 17:00",
@@ -172,7 +180,6 @@ async function saveHire() {
       pagibig: pagInput || "N/A",
     };
 
-    // Forward package data payload directly to the Python server routing maps
     const endpointUrl = currentEditId ? `/api/employees/update/${currentEditId}` : '/api/employees/add';
     const response = await fetch(endpointUrl, {
       method: 'POST',
@@ -233,6 +240,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('in-name').value = "";
     document.getElementById('in-site').value = "";
     document.getElementById('in-pos').value = "";
+    document.getElementById('in-cycle').value = "Weekly";
     document.getElementById('in-hourly').value = "";
     document.getElementById('in-daily').value = "₱0.00";
     document.getElementById('in-shift').value = "";

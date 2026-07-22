@@ -2,19 +2,19 @@ import os
 import sys
 import json
 import sqlite3
-import shutil
+import math
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 # 🔑 MAGIC PYINSTALLER PORTABILITY PATH FINDER
 if getattr(sys, 'frozen', False):
-    # If running inside the compiled .exe, look in the temporary runtime folder
+    # If running inside compiled .exe, look in the temporary runtime folder
     FRONTEND_DIR = sys._MEIPASS
-    # Put the live database outside the exe so their data actually saves!
+    # Put live database outside exe so data saves permanently
     BASE_DIR = os.path.dirname(sys.executable)
 else:
-    # If running locally in VS Code
+    # If running locally in VS Code / Terminal
     FRONTEND_DIR = os.path.dirname(os.path.abspath(__file__))
     BASE_DIR = FRONTEND_DIR
 
@@ -22,23 +22,24 @@ DB_NAME = os.path.join(BASE_DIR, "workforce.db")
 ARCHIVE_DIR = os.path.join(BASE_DIR, "backups_and_archives")
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
-CORS(app) # Prevents cross-origin resource sharing block faults during development
+CORS(app)  # Prevents cross-origin resource sharing block faults
 
 # ==========================================
-# 💾 DATABASE INITIALIZATION BLOCK
+# 💾 DATABASE INITIALIZATION & MIGRATION BLOCK
 # ==========================================
 def init_db():
-    """Initializes the database structure if it doesn't exist."""
+    """Initializes and migrates the database structure if needed."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # 1. Core Employee Master Table (TIN REMOVED)
+    # 1. Core Employee Master Table (Including pay_cycle)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS employees (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             site TEXT,
             pos TEXT,
+            pay_cycle TEXT DEFAULT 'Weekly',
             hourly_rate REAL,
             daily_rate REAL,
             shift TEXT,
@@ -51,6 +52,13 @@ def init_db():
             pagibig TEXT
         )
     ''')
+
+    # Safe Schema Migration Check for existing workforce.db instances
+    cursor.execute("PRAGMA table_info(employees)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "pay_cycle" not in columns:
+        print("[MIGRATION] Adding 'pay_cycle' column to existing employees table...")
+        cursor.execute("ALTER TABLE employees ADD COLUMN pay_cycle TEXT DEFAULT 'Weekly'")
     
     # 2. Daily Attendance Register
     cursor.execute('''
@@ -71,7 +79,7 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS payroll_archives (
             archive_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            archive_period TEXT, -- 'WEEKLY' or 'MONTHLY'
+            archive_period TEXT, -- 'WEEKLY', 'SEMI-MONTHLY', or 'DAILY'
             archive_timestamp TEXT,
             employee_id TEXT,
             name TEXT,
@@ -88,14 +96,26 @@ def init_db():
 # ==========================================
 # 🛡️ SECURITY & ENGINE BACKUP CONTROLLERS
 # ==========================================
-def execute_backup(backup_type):
-    """Creates a physical file backup clone of the database using SQLite's native API."""
-    if not os.path.exists(ARCHIVE_DIR):
-        os.makedirs(ARCHIVE_DIR)
+def get_week_of_month(dt):
+    """Calculates week number of current month (Week-1 to Week-5)."""
+    first_day = dt.replace(day=1)
+    adjusted_dom = dt.day + first_day.weekday()
+    return int(math.ceil(adjusted_dom / 7.0))
+
+def execute_backup(backup_type="MANUAL"):
+    """Creates a physical backup copy of the SQLite database."""
+    now = datetime.now()
+    month_folder = now.strftime("%Y-%m_%B")       # e.g., '2026-07_July'
+    week_num = f"Week-{get_week_of_month(now)}"   # e.g., 'Week-4'
+    day_folder = now.strftime("%Y-%m-%d")         # e.g., '2026-07-22'
+
+    target_dir = os.path.join(ARCHIVE_DIR, month_folder, week_num, day_folder)
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
         
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = now.strftime("%H%M%S")
     backup_filename = f"backup_{backup_type}_{timestamp}.db"
-    backup_path = os.path.join(ARCHIVE_DIR, backup_filename)
+    backup_path = os.path.join(target_dir, backup_filename)
     
     if not os.path.exists(DB_NAME):
         return False
@@ -107,6 +127,7 @@ def execute_backup(backup_type):
             src_conn.backup(dst_conn)
         dst_conn.close()
         src_conn.close()
+        print(f"[BACKUP SUCCESS] Archived to: {backup_path}")
         return True
     except Exception as e:
         print(f"Fail-safe backup warning: {e}")
@@ -124,7 +145,7 @@ def serve_pages(path):
     return send_from_directory(FRONTEND_DIR, path)
 
 # ==========================================
-# 👥 EMPLOYEES MANAGED API ROUTING ROUTES
+# 👥 EMPLOYEES MANAGED API ROUTES
 # ==========================================
 @app.route('/api/employees', methods=['GET'])
 def get_employees():
@@ -138,10 +159,21 @@ def get_employees():
     result = []
     for row in rows:
         result.append({
-            "id": row["id"], "name": row["name"], "site": row["site"], "pos": row["pos"],
-            "hourlyRate": row["hourly_rate"], "dailyRate": row["daily_rate"], "shift": row["shift"],
-            "hire": row["hire_date"], "rehire": row["rehire_date"], "termination": row["termination_date"],
-            "status": row["status"], "sss": row["sss"], "philhealth": row["philhealth"], "pagibig": row["pagibig"]
+            "id": row["id"], 
+            "name": row["name"], 
+            "site": row["site"], 
+            "pos": row["pos"],
+            "payCycle": row["pay_cycle"] or "Weekly",
+            "hourlyRate": row["hourly_rate"], 
+            "dailyRate": row["daily_rate"], 
+            "shift": row["shift"],
+            "hire": row["hire_date"], 
+            "rehire": row["rehire_date"], 
+            "termination": row["termination_date"],
+            "status": row["status"], 
+            "sss": row["sss"], 
+            "philhealth": row["philhealth"], 
+            "pagibig": row["pagibig"]
         })
     return jsonify(result)
 
@@ -152,9 +184,16 @@ def add_employee():
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO employees (id, name, site, pos, hourly_rate, daily_rate, shift, hire_date, rehire_date, termination_date, status, sss, philhealth, pagibig)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (data['id'], data['name'], data['site'], data['pos'], data['hourlyRate'], data['dailyRate'], data['shift'], data['hire'], data['rehire'], data['termination'], data['status'], data['sss'], data['philhealth'], data['pagibig']))
+            INSERT INTO employees (
+                id, name, site, pos, pay_cycle, hourly_rate, daily_rate, 
+                shift, hire_date, rehire_date, termination_date, status, sss, philhealth, pagibig
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data['id'], data['name'], data['site'], data['pos'], data.get('payCycle', 'Weekly'),
+            data['hourlyRate'], data['dailyRate'], data['shift'], data['hire'], 
+            data['rehire'], data['termination'], data['status'], data['sss'], 
+            data['philhealth'], data['pagibig']
+        ))
         conn.commit()
         conn.close()
         return jsonify({"message": "Successfully added."}), 200
@@ -168,9 +207,16 @@ def update_employee(emp_id):
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute('''
-            UPDATE employees SET name=?, site=?, pos=?, hourly_rate=?, daily_rate=?, shift=?, rehire_date=?, termination_date=?, status=?, sss=?, philhealth=?, pagibig=?
+            UPDATE employees 
+            SET name=?, site=?, pos=?, pay_cycle=?, hourly_rate=?, daily_rate=?, 
+                shift=?, rehire_date=?, termination_date=?, status=?, sss=?, philhealth=?, pagibig=?
             WHERE id=?
-        ''', (data['name'], data['site'], data['pos'], data['hourlyRate'], data['dailyRate'], data['shift'], data['rehire'], data['termination'], data['status'], data['sss'], data['philhealth'], data['pagibig'], emp_id))
+        ''', (
+            data['name'], data['site'], data['pos'], data.get('payCycle', 'Weekly'),
+            data['hourlyRate'], data['dailyRate'], data['shift'], data['rehire'], 
+            data['termination'], data['status'], data['sss'], data['philhealth'], 
+            data['pagibig'], emp_id
+        ))
         conn.commit()
         conn.close()
         return jsonify({"message": "Successfully updated."}), 200
@@ -254,7 +300,7 @@ def get_payroll_registry():
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT e.id, e.name, e.site, e.pos, e.hourly_rate, e.sss, e.philhealth, e.pagibig,
+        SELECT e.id, e.name, e.site, e.pos, e.pay_cycle, e.hourly_rate, e.sss, e.philhealth, e.pagibig,
                IFNULL(SUM(a.calculated_hours), 0) as total_week_hours
         FROM employees e
         LEFT JOIN attendance a ON e.id = a.employee_id
@@ -267,9 +313,16 @@ def get_payroll_registry():
     result = []
     for row in rows:
         result.append({
-            "id": row["id"], "name": row["name"], "site": row["site"], "pos": row["pos"],
-            "hourlyRate": row["hourly_rate"], "sss": row["sss"], "philhealth": row["philhealth"],
-            "pagibig": row["pagibig"], "totalWeekHours": row["total_week_hours"]
+            "id": row["id"], 
+            "name": row["name"], 
+            "site": row["site"], 
+            "pos": row["pos"],
+            "payCycle": row["pay_cycle"] or "Weekly",
+            "hourlyRate": row["hourly_rate"], 
+            "sss": row["sss"], 
+            "philhealth": row["philhealth"],
+            "pagibig": row["pagibig"], 
+            "totalWeekHours": row["total_week_hours"]
         })
     return jsonify(result)
 
@@ -280,18 +333,19 @@ def closeout_payroll():
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         timestamp = datetime.now().isoformat()
+        period_type = data.get('period_type', 'WEEKLY').upper()
         
         for row in data['current_payroll_rows']:
             deductions_dump = json.dumps(row['deductions_dump'])
             cursor.execute('''
                 INSERT INTO payroll_archives (archive_period, archive_timestamp, employee_id, name, hours_worked, gross_pay, net_pay, deductions_json)
-                VALUES ('WEEKLY', ?, ?, ?, ?, ?, ?, ?)
-            ''', (timestamp, row['id'], row['name'], row['hours'], row['gross'], row['net'], deductions_dump))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (period_type, timestamp, row['id'], row['name'], row['hours'], row['gross'], row['net'], deductions_dump))
             
         conn.commit()
         conn.close()
         
-        execute_backup("WEEKLY")
+        execute_backup(period_type)
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"message": str(e)}), 400
@@ -301,46 +355,85 @@ def closeout_payroll():
 # ==========================================
 @app.route('/api/reports/generate', methods=['GET'])
 def generate_report():
-    report_type = request.args.get('type')
-    window = request.args.get('window')
+    report_type = request.args.get('type', 'Weekly').upper()
+    window = request.args.get('window', '')
     
     conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    cursor.execute("SELECT IFNULL(SUM(gross_pay), 0), IFNULL(SUM(net_pay), 0), COUNT(DISTINCT employee_id) FROM payroll_archives")
-    gross, net, count = cursor.fetchone()
+    # 1. Fetch total aggregates from historical archives
+    cursor.execute("""
+        SELECT IFNULL(SUM(gross_pay), 0) as gross, IFNULL(SUM(net_pay), 0) as net, COUNT(DISTINCT employee_id) as cnt
+        FROM payroll_archives 
+        WHERE archive_period = ?
+    """, (report_type,))
+    summary_row = cursor.fetchone()
+    
+    # 2. Fetch employee detailed line-items for the breakdown
+    cursor.execute("""
+        SELECT employee_id, name, hours_worked, gross_pay, net_pay 
+        FROM payroll_archives 
+        WHERE archive_period = ?
+    """, (report_type,))
+    archive_rows = cursor.fetchall()
+    
+    details = []
+    for row in archive_rows:
+        details.append({
+            "id": row["employee_id"],
+            "name": row["name"],
+            "hours": row["hours_worked"],
+            "gross": row["gross_pay"],
+            "net": row["net_pay"],
+            "status": "Archived"
+        })
+
+    # Fallback: If no historical closeout exists yet, generate live projections from Active employees
+    if not details:
+        cursor.execute("SELECT id, name, hourly_rate FROM employees WHERE status = 'Active'")
+        active_staff = cursor.fetchall()
+        for emp in active_staff:
+            hr_rate = emp["hourly_rate"] or 0.0
+            est_gross = round(hr_rate * 48.0, 2)
+            details.append({
+                "id": emp["id"],
+                "name": emp["name"],
+                "hours": 48.0,
+                "gross": est_gross,
+                "net": round(est_gross * 0.9, 2),
+                "status": "Pending Closeout"
+            })
+
     conn.close()
     
     return jsonify({
-        "type": report_type, "window": window,
-        "grossTotal": gross or 47700.00, "netTotal": net or 45200.00, "staffCount": count or 4
-    })
+        "type": report_type, 
+        "window": window,
+        "grossTotal": round(summary_row["gross"], 2) if summary_row["gross"] > 0 else sum(d["gross"] for d in details), 
+        "netTotal": round(summary_row["net"], 2) if summary_row["net"] > 0 else sum(d["net"] for d in details), 
+        "staffCount": summary_row["cnt"] if summary_row["cnt"] > 0 else len(details),
+        "details": details
+    }), 200
 
 # ==========================================
 # 📊 DASHBOARD & REPORTS METRICS ENDPOINTS
 # ==========================================
-
 @app.route('/api/dashboard/metrics', methods=['GET'])
 def get_dashboard_metrics():
-    """Provides dynamic calculations for the Dashboard KPI cards."""
     try:
         conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # 1. Total active employees
         cursor.execute("SELECT COUNT(*) FROM employees WHERE status = 'Active'")
         active_count = cursor.fetchone()[0]
 
-        # 2. Average hourly rate of active workforce
         cursor.execute("SELECT IFNULL(AVG(hourly_rate), 0) FROM employees WHERE status = 'Active'")
         avg_rate = cursor.fetchone()[0]
 
-        # 3. Latest weekly gross run from archived payroll logs
         cursor.execute("SELECT IFNULL(SUM(gross_pay), 0) FROM payroll_archives WHERE archive_period = 'WEEKLY'")
         gross_weekly = cursor.fetchone()[0]
 
-        # 4. Count of pending runs (active staff who logged hours but haven't been archived yet)
         cursor.execute("""
             SELECT COUNT(DISTINCT e.id) 
             FROM employees e
@@ -361,15 +454,12 @@ def get_dashboard_metrics():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
-
 @app.route('/api/reports/summary-totals', methods=['GET'])
 def get_reports_summary_totals():
-    """Provides total payout sums for Daily, Weekly, and Monthly report cards."""
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
 
-        # Daily sum from active daily attendance multiplied by average rate
         cursor.execute("""
             SELECT IFNULL(SUM(a.calculated_hours * e.hourly_rate), 0)
             FROM attendance a
@@ -378,14 +468,12 @@ def get_reports_summary_totals():
         """)
         daily_total = cursor.fetchone()[0]
 
-        # Weekly and Monthly totals from historical payroll archives
         cursor.execute("SELECT IFNULL(SUM(net_pay), 0) FROM payroll_archives WHERE archive_period = 'WEEKLY'")
         weekly_total = cursor.fetchone()[0]
 
-        cursor.execute("SELECT IFNULL(SUM(net_pay), 0) FROM payroll_archives WHERE archive_period = 'MONTHLY'")
+        cursor.execute("SELECT IFNULL(SUM(net_pay), 0) FROM payroll_archives WHERE archive_period IN ('MONTHLY', 'SEMI-MONTHLY')")
         monthly_total = cursor.fetchone()[0]
 
-        # Fallback to weekly sum for monthly if monthly archives are empty
         if monthly_total == 0 and weekly_total > 0:
             monthly_total = weekly_total
 
@@ -400,11 +488,10 @@ def get_reports_summary_totals():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
-
-
 # ==========================================
 # 🚀 SYSTEM DEPLOYMENT TRIGGER RUNNER
 # ==========================================
-
 init_db()  
+
+
 app.run(host='127.0.0.1', port=5000, debug=False)

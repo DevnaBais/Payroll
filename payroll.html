@@ -2,36 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Weekly Payroll Calculations</title>
+  <title>Payroll Processing</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* Tab Control Styles */
+    .payroll-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #cfd8dc;
+    }
+    .tab-btn {
+      padding: 10px 24px;
+      font-size: 1em;
+      font-weight: 700;
+      border: none;
+      background: #eceff1;
+      color: #546e7a;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      transition: all 0.2s ease;
+    }
+    .tab-btn.active {
+      background: #1565c0;
+      color: #ffffff;
+    }
+    .tab-btn:hover:not(.active) {
+      background: #cfd8dc;
+    }
+  </style>
 </head>
 <body>
  <div class="sidebar">
     <h2>Payroll System</h2>
     <a href="dashboard.html">Dashboard</a>
     <a href="employees.html">Employees</a>
-    <a href="attendance.html" >Attendance</a> 
-    <a href="payroll.html">Payroll</a>
+    <a href="attendance.html">Attendance</a> 
+    <a href="payroll.html" class="active">Payroll</a>
     <a href="reports.html">Reports</a>
   </div>
   
-  <div class="top-bar">
-    <div class="top-icon">⣿</div><div class="top-icon">🔔</div>
-  </div>
+  
   
   <div class="main-content">
     <div class="panel-header">
-      <h1>Weekly Payroll Processing</h1>
-
+      <h1 id="payroll-title">Weekly Payroll Processing</h1>
     </div>
 
-    <div style="margin-bottom:20px; display:flex; gap:12px; align-items:center;">
+    <!-- Cycle Selector Tabs -->
+    <div class="payroll-tabs">
+      <button class="tab-btn active" id="tab-weekly" onclick="switchPayrollCycle('WEEKLY')">📅 Weekly Payroll</button>
+      <button class="tab-btn" id="tab-kinsenas" onclick="switchPayrollCycle('KINSENAS')">🗓️ Kinsenas Payroll (Semi-Monthly)</button>
+    </div>
+
+    <div style="margin-bottom:20px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
       <button class="btn-utility" style="width:auto; padding:8px 16px;" id="btn-scan">📋 Scan & Verify New Hires</button>
-      <span style="font-size:0.9em; color:var(--text-muted);">Filters automatically applied: <strong>Active Employees Only</strong>.</span>
+      <span style="font-size:0.9em; color:var(--text-muted);">
+        Filters applied: <strong>Active Workforce Only</strong> | Cycle: <strong id="lbl-active-cycle" style="color:#1565c0;">WEEKLY</strong>
+      </span>
     </div>
 
     <div class="table-wrapper">
-      <div style="background:#fafafa; padding:16px; font-weight:800; border-bottom:1px solid #cfd8dc;">Active Workforce Weekly Calculation Sheet</div>
+      <div id="table-header-title" style="background:#fafafa; padding:16px; font-weight:800; border-bottom:1px solid #cfd8dc;">
+        Active Workforce Weekly Calculation Sheet
+      </div>
       <table>
         <thead>
           <tr>
@@ -44,7 +78,7 @@
             <th>Days Worked</th>
             <th>OT Hours</th>
             <th>Gross Pay</th>
-            <!-- Split Gov Ded. Column into 4 explicit units -->
+            <!-- Government Deductions -->
             <th style="color:#c62828; background:#ffebee;">SSS</th>
             <th style="color:#c62828; background:#ffebee;">PhilHealth</th>
             <th style="color:#c62828; background:#ffebee;">Pag-IBIG</th>
@@ -74,9 +108,10 @@
       </table>
     </div>
 
-    <div style="display:flex; gap:12px; margin-top:20px;">
+    <div style="display:flex; gap:12px; margin-top:20px; flex-wrap:wrap;">
       <button class="btn-utility" style="width:auto; padding:10px 20px; background:#fffde7; border-color:#fbc02d;" id="btn-compute">📊 Compute All Rows</button>
-      <button class="btn-utility" style="width:auto; padding:10px 20px; background:#e8f5e9; border-color:#4caf50;" id="btn-export">📊 Generate Weekly Report (.CSV)</button>
+      <button class="btn-utility" style="width:auto; padding:10px 20px; background:#e8f5e9; border-color:#4caf50;" id="btn-export">📥 Export (.CSV)</button>
+      <button class="btn-utility" style="width:auto; padding:10px 20px; background:#e3f2fd; border-color:#2196f3; font-weight:700;" id="btn-closeout">🔒 Commit & Freeze Closeout</button>
     </div>
   </div>
 
