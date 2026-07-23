@@ -256,6 +256,17 @@ function resetTotals() {
 // ==========================================
 // 📥 EXPORT & CLOSEOUT
 // ==========================================
+
+// FIXED: Returns a local YYYY-MM-DD string instead of using toISOString(),
+// which converts to UTC and could label an export filename with the wrong
+// calendar day for PH (UTC+8) users.
+function getLocalDateString(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function exportPayrollToCSV() {
   const rows = document.querySelectorAll('#payroll-body tr');
   if (rows.length === 0 || !rows[0].dataset.empId) {
@@ -286,7 +297,8 @@ function exportPayrollToCSV() {
   const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: "text/csv;charset=utf-8;" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `Payroll_${currentCycle}_${new Date().toISOString().split('T')[0]}.csv`;
+  // FIXED: was `new Date().toISOString().split('T')[0]`
+  link.download = `Payroll_${currentCycle}_${getLocalDateString(new Date())}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -325,6 +337,7 @@ async function commitAndFreezeCloseout() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         period_type: currentCycle,
+        window: selectedWindow,
         current_payroll_rows: payrollPayload
       })
     });

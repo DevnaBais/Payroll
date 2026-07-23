@@ -1,8 +1,20 @@
+// FIXED: Returns a local YYYY-MM-DD string instead of using toISOString(),
+// which converts to UTC and can roll the date back a day for PH (UTC+8)
+// users before 8:00 AM local time.
+function getLocalDateString(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // Automatically set the date picker to the current day on load
 function setDefaultDate() {
   const dateInput = document.getElementById('attendance-day');
   if (dateInput && !dateInput.value) {
-    const today = new Date().toISOString().split('T')[0];
+    // FIXED: was `new Date().toISOString().split('T')[0]`, which returned
+    // yesterday's date for anyone opening the page before 8 AM PHT.
+    const today = getLocalDateString(new Date());
     dateInput.value = today;
   }
 }

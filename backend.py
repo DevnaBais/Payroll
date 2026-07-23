@@ -2,37 +2,44 @@ import os
 import sys
 import json
 import sqlite3
-import math
+import io
+import csv
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
+from apscheduler.schedulers.background import BackgroundScheduler
 
-# 🔑 MAGIC PYINSTALLER PORTABILITY PATH FINDER
+# Import your separate backup script (PyInstaller bundles this automatically)
+import backup
+
+# ==========================================
+# 🔑 PORTABILITY & RUNTIME PATH CONTROLLER
+# ==========================================
 if getattr(sys, 'frozen', False):
-    # If running inside compiled .exe, look in the temporary runtime folder
+    # PyInstaller bundle execution path
     FRONTEND_DIR = sys._MEIPASS
-    # Put live database outside exe so data saves permanently
     BASE_DIR = os.path.dirname(sys.executable)
 else:
-    # If running locally in VS Code / Terminal
+    # Standard Python execution path
     FRONTEND_DIR = os.path.dirname(os.path.abspath(__file__))
     BASE_DIR = FRONTEND_DIR
 
+# Ensures workforce.db sits outside the temp folder right beside app.exe
 DB_NAME = os.path.join(BASE_DIR, "workforce.db")
-ARCHIVE_DIR = os.path.join(BASE_DIR, "backups_and_archives")
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
-CORS(app)  # Prevents cross-origin resource sharing block faults
+CORS(app)
+
 
 # ==========================================
-# 💾 DATABASE INITIALIZATION & MIGRATION BLOCK
+# 💾 DATABASE INITIALIZATION & MIGRATIONS
 # ==========================================
 def init_db():
-    """Initializes and migrates the database structure if needed."""
+    """Initializes and migrates database schemas if needed."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # 1. Core Employee Master Table (Including pay_cycle)
+    # 1. Employees Master Table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS employees (
             id TEXT PRIMARY KEY,
@@ -53,14 +60,14 @@ def init_db():
         )
     ''')
 
-    # Safe Schema Migration Check for existing workforce.db instances
+    # Schema Migration Check for missing pay_cycle
     cursor.execute("PRAGMA table_info(employees)")
     columns = [col[1] for col in cursor.fetchall()]
     if "pay_cycle" not in columns:
         print("[MIGRATION] Adding 'pay_cycle' column to existing employees table...")
         cursor.execute("ALTER TABLE employees ADD COLUMN pay_cycle TEXT DEFAULT 'Weekly'")
     
-    # 2. Daily Attendance Register
+    # 2. Attendance Register
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS attendance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,63 +82,49 @@ def init_db():
         )
     ''')
     
-    # 3. Historical Transaction/Payroll Archives (Immutable Log)
+    # 3. Payroll Transaction Archives
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS payroll_archives (
-            archive_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            archive_period TEXT, -- 'WEEKLY', 'SEMI-MONTHLY', or 'DAILY'
-            archive_timestamp TEXT,
-            employee_id TEXT,
-            name TEXT,
-            hours_worked REAL,
-            gross_pay REAL,
-            net_pay REAL,
-            deductions_json TEXT 
+    CREATE TABLE IF NOT EXISTS payroll_archives (
+        archive_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        archive_period TEXT,
+        archive_window TEXT,
+        archive_timestamp TEXT,
+        employee_id TEXT,
+        name TEXT,
+        hours_worked REAL,
+        gross_pay REAL,
+        net_pay REAL,
+        deductions_json TEXT
+    )
+''')
+
+    cursor.execute("PRAGMA table_info(payroll_archives)")
+    columns = [col[1] for col in cursor.fetchall()]
+
+    if "archive_window" not in columns:
+        cursor.execute(
+            "ALTER TABLE payroll_archives ADD COLUMN archive_window TEXT DEFAULT ''"
         )
-    ''')
-    
+
     conn.commit()
     conn.close()
 
 # ==========================================
-# 🛡️ SECURITY & ENGINE BACKUP CONTROLLERS
+# ⏰ AUTOMATED DAILY BACKUP SCHEDULER
 # ==========================================
-def get_week_of_month(dt):
-    """Calculates week number of current month (Week-1 to Week-5)."""
-    first_day = dt.replace(day=1)
-    adjusted_dom = dt.day + first_day.weekday()
-    return int(math.ceil(adjusted_dom / 7.0))
-
-def execute_backup(backup_type="MANUAL"):
-    """Creates a physical backup copy of the SQLite database."""
-    now = datetime.now()
-    month_folder = now.strftime("%Y-%m_%B")       # e.g., '2026-07_July'
-    week_num = f"Week-{get_week_of_month(now)}"   # e.g., 'Week-4'
-    day_folder = now.strftime("%Y-%m-%d")         # e.g., '2026-07-22'
-
-    target_dir = os.path.join(ARCHIVE_DIR, month_folder, week_num, day_folder)
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir, exist_ok=True)
-        
-    timestamp = now.strftime("%H%M%S")
-    backup_filename = f"backup_{backup_type}_{timestamp}.db"
-    backup_path = os.path.join(target_dir, backup_filename)
+def init_backup_scheduler():
+    """Initializes background auto-backup triggers."""
+    scheduler = BackgroundScheduler(daemon=True)
     
-    if not os.path.exists(DB_NAME):
-        return False
+    # Option 1: Automatic daily midnight backup
+    scheduler.add_job(backup.execute_backup, 'cron', hour=0, minute=0, args=["AUTO_DAILY"])
+    
+    # Option 2: Automatic backup on app startup (catches forgotten commits)
+    backup.execute_backup("APP_STARTUP")
+    
+    scheduler.start()
+    print("⏰ [SCHEDULER] Background auto-backup scheduler active.")
 
-    try:
-        src_conn = sqlite3.connect(DB_NAME)
-        dst_conn = sqlite3.connect(backup_path)
-        with dst_conn:
-            src_conn.backup(dst_conn)
-        dst_conn.close()
-        src_conn.close()
-        print(f"[BACKUP SUCCESS] Archived to: {backup_path}")
-        return True
-    except Exception as e:
-        print(f"Fail-safe backup warning: {e}")
-        return False
 
 # ==========================================
 # 🌐 FRONTEND STATIC ROUTING MAPS
@@ -143,6 +136,7 @@ def index():
 @app.route('/<path:path>')
 def serve_pages(path):
     return send_from_directory(FRONTEND_DIR, path)
+
 
 # ==========================================
 # 👥 EMPLOYEES MANAGED API ROUTES
@@ -223,8 +217,9 @@ def update_employee(emp_id):
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
+
 # ==========================================
-# ⏰ ATTENDANCE HOOK INTERFACES
+# ⏰ ATTENDANCE LOGGING ENDPOINTS
 # ==========================================
 @app.route('/api/attendance/day', methods=['GET'])
 def get_attendance_day():
@@ -290,8 +285,9 @@ def save_attendance_batch():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
+
 # ==========================================
-# 💵 PAYROLL CALCULATION ENGINE CONNECTIONS
+# 💵 PAYROLL CALCULATION & CLOSEOUT
 # ==========================================
 @app.route('/api/payroll/registry-data', methods=['GET'])
 def get_payroll_registry():
@@ -334,24 +330,38 @@ def closeout_payroll():
         cursor = conn.cursor()
         timestamp = datetime.now().isoformat()
         period_type = data.get('period_type', 'WEEKLY').upper()
+        archive_window = data.get('window', '')
         
         for row in data['current_payroll_rows']:
             deductions_dump = json.dumps(row['deductions_dump'])
             cursor.execute('''
-                INSERT INTO payroll_archives (archive_period, archive_timestamp, employee_id, name, hours_worked, gross_pay, net_pay, deductions_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (period_type, timestamp, row['id'], row['name'], row['hours'], row['gross'], row['net'], deductions_dump))
+                INSERT INTO payroll_archives (
+                  archive_period,
+                  archive_window,
+                  archive_timestamp,
+                  employee_id,
+                  name,
+                  hours_worked,
+                  gross_pay,
+                  net_pay,
+                  deductions_json
+                                   )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (period_type, archive_window, timestamp, row['id'], row['name'], row['hours'], row['gross'], row['net'], deductions_dump))
             
         conn.commit()
         conn.close()
-        
-        execute_backup(period_type)
+
+        # Trigger backup on manual closeout
+        backup.execute_backup(period_type)
+
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
+
 # ==========================================
-# 📊 REPORTS AUDITING DISPATCH ENGINE
+# 📊 REPORTS & DASHBOARD METRICS
 # ==========================================
 @app.route('/api/reports/generate', methods=['GET'])
 def generate_report():
@@ -362,20 +372,26 @@ def generate_report():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    # 1. Fetch total aggregates from historical archives
     cursor.execute("""
-        SELECT IFNULL(SUM(gross_pay), 0) as gross, IFNULL(SUM(net_pay), 0) as net, COUNT(DISTINCT employee_id) as cnt
-        FROM payroll_archives 
-        WHERE archive_period = ?
-    """, (report_type,))
+    SELECT IFNULL(SUM(gross_pay), 0) as gross,
+           IFNULL(SUM(net_pay), 0) as net,
+           COUNT(DISTINCT employee_id) as cnt
+    FROM payroll_archives
+    WHERE archive_period = ?
+      AND archive_window = ?
+""", (report_type, window))
     summary_row = cursor.fetchone()
     
-    # 2. Fetch employee detailed line-items for the breakdown
     cursor.execute("""
-        SELECT employee_id, name, hours_worked, gross_pay, net_pay 
-        FROM payroll_archives 
-        WHERE archive_period = ?
-    """, (report_type,))
+    SELECT employee_id,
+           name,
+           hours_worked,
+           gross_pay,
+           net_pay
+    FROM payroll_archives
+    WHERE archive_period = ?
+      AND archive_window = ?
+""", (report_type, window))
     archive_rows = cursor.fetchall()
     
     details = []
@@ -389,7 +405,6 @@ def generate_report():
             "status": "Archived"
         })
 
-    # Fallback: If no historical closeout exists yet, generate live projections from Active employees
     if not details:
         cursor.execute("SELECT id, name, hourly_rate FROM employees WHERE status = 'Active'")
         active_staff = cursor.fetchall()
@@ -416,9 +431,7 @@ def generate_report():
         "details": details
     }), 200
 
-# ==========================================
-# 📊 DASHBOARD & REPORTS METRICS ENDPOINTS
-# ==========================================
+
 @app.route('/api/dashboard/metrics', methods=['GET'])
 def get_dashboard_metrics():
     try:
@@ -453,45 +466,248 @@ def get_dashboard_metrics():
 
     except Exception as e:
         return jsonify({"message": str(e)}), 400
+@app.route('/api/reports/summary-single', methods=['GET'])
+def get_summary_single():
+    report_type = request.args.get("type", "").upper()
+    window = request.args.get("window", "")
 
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    total = 0
+
+    if report_type == "DAILY":
+        cursor.execute("""
+            SELECT IFNULL(SUM(a.calculated_hours * e.hourly_rate),0)
+            FROM attendance a
+            JOIN employees e
+            ON a.employee_id=e.id
+            WHERE a.log_date=?
+        """, (window,))
+        total = cursor.fetchone()[0]
+
+    elif report_type == "WEEKLY":
+        cursor.execute("""
+            SELECT IFNULL(SUM(net_pay),0)
+            FROM payroll_archives
+            WHERE archive_period='WEEKLY'
+        """)
+        total = cursor.fetchone()[0]
+
+    elif report_type == "MONTHLY":
+        cursor.execute("""
+            SELECT IFNULL(SUM(net_pay),0)
+            FROM payroll_archives
+            WHERE archive_period IN ('MONTHLY','SEMI-MONTHLY')
+        """)
+        total = cursor.fetchone()[0]
+
+    conn.close()
+
+    return jsonify({
+        "total": round(total,2)
+    })
 @app.route('/api/reports/summary-totals', methods=['GET'])
 def get_reports_summary_totals():
     try:
+        date = request.args.get("date", "")
+
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT IFNULL(SUM(a.calculated_hours * e.hourly_rate), 0)
-            FROM attendance a
-            JOIN employees e ON a.employee_id = e.id
-            WHERE a.log_date = DATE('now')
-        """)
+        if date:
+            cursor.execute("""
+                SELECT IFNULL(SUM(a.calculated_hours * e.hourly_rate),0)
+                FROM attendance a
+                JOIN employees e
+                ON a.employee_id=e.id
+                WHERE a.log_date=?
+            """, (date,))
+        else:
+            cursor.execute("""
+                SELECT IFNULL(SUM(a.calculated_hours * e.hourly_rate),0)
+                FROM attendance a
+                JOIN employees e
+                ON a.employee_id=e.id
+            """)
+
         daily_total = cursor.fetchone()[0]
 
-        cursor.execute("SELECT IFNULL(SUM(net_pay), 0) FROM payroll_archives WHERE archive_period = 'WEEKLY'")
+        cursor.execute("""
+            SELECT IFNULL(SUM(net_pay),0)
+            FROM payroll_archives
+            WHERE archive_period='WEEKLY'
+        """)
         weekly_total = cursor.fetchone()[0]
 
-        cursor.execute("SELECT IFNULL(SUM(net_pay), 0) FROM payroll_archives WHERE archive_period IN ('MONTHLY', 'SEMI-MONTHLY')")
+        cursor.execute("""
+            SELECT IFNULL(SUM(net_pay),0)
+            FROM payroll_archives
+            WHERE archive_period IN ('MONTHLY','SEMI-MONTHLY')
+        """)
         monthly_total = cursor.fetchone()[0]
-
-        if monthly_total == 0 and weekly_total > 0:
-            monthly_total = weekly_total
 
         conn.close()
 
         return jsonify({
-            "daily": round(daily_total, 2),
-            "weekly": round(weekly_total, 2),
-            "monthly": round(monthly_total, 2)
-        }), 200
+            "daily": round(daily_total,2),
+            "weekly": round(weekly_total,2),
+            "monthly": round(monthly_total,2)
+        })
 
     except Exception as e:
         return jsonify({"message": str(e)}), 400
+# ==========================================
+# 📄 CLIENT-FRIENDLY EXPORT ENDPOINTS
+# ==========================================
+@app.route('/api/export/text', methods=['GET'])
+def export_text_report():
+    """Generates a highly readable, human-friendly text report for clients."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    report = []
+    now_str = datetime.now().strftime('%B %d, %Y - %I:%M %p')
+
+    # Header Box
+    report.append("┌──────────────────────────────────────────────────────────────────────────┐")
+    report.append("│                         PAYROLL & WORKFORCE SUMMARY                      │")
+    report.append(f"│ Generated: {now_str:<61} │")
+    report.append("└──────────────────────────────────────────────────────────────────────────┘")
+    report.append("")
+
+    # Section 1: Employee Directory
+    report.append("============================================================================")
+    report.append(" 👥 1. EMPLOYEE DIRECTORY")
+    report.append("============================================================================")
+    header = f" {'ID':<10} | {'NAME':<24} | {'POSITION':<15} | {'CYCLE':<12} | {'STATUS':<8}"
+    report.append(header)
+    report.append("-" * len(header))
+
+    cursor.execute("SELECT id, name, pos, pay_cycle, status FROM employees")
+    employees = cursor.fetchall()
+
+    if employees:
+        for emp in employees:
+            emp_id = emp[0] or "N/A"
+            name = emp[1] or "N/A"
+            pos = emp[2] or "N/A"
+            cycle = emp[3] or "Weekly"
+            status = emp[4] or "Active"
+            report.append(f" {emp_id:<10} | {name:<24} | {pos:<15} | {cycle:<12} | {status:<8}")
+    else:
+        report.append(" No employee records found.")
+
+    report.append("\n")
+
+    # Section 2: Attendance Logs
+    report.append("============================================================================")
+    report.append(" ⏰ 2. RECENT ATTENDANCE LOGS")
+    report.append("============================================================================")
+    att_header = f" {'DATE':<12} | {'EMPLOYEE NAME':<24} | {'IN':<8} | {'OUT':<8} | {'HRS WORKED':<10}"
+    report.append(att_header)
+    report.append("-" * len(att_header))
+
+    cursor.execute("""
+        SELECT a.log_date, e.name, a.time_in, a.time_out, a.calculated_hours 
+        FROM attendance a 
+        JOIN employees e ON a.employee_id = e.id
+        ORDER BY a.log_date DESC
+    """)
+    logs = cursor.fetchall()
+
+    if logs:
+        for log in logs:
+            date = log[0] or "N/A"
+            name = log[1] or "N/A"
+            time_in = log[2] or "--:--"
+            time_out = log[3] or "--:--"
+            hrs = f"{log[4]:.2f} hrs" if log[4] is not None else "0.00 hrs"
+            report.append(f" {date:<12} | {name:<24} | {time_in:<8} | {time_out:<8} | {hrs:<10}")
+    else:
+        report.append(" No recent attendance records logged.")
+
+    report.append("\n")
+
+    # Section 3: Payroll Closeout Summary
+    report.append("============================================================================")
+    report.append(" 💰 3. PAYROLL CLOSEOUT ARCHIVE")
+    report.append("============================================================================")
+    pay_header = f" {'PERIOD':<10} | {'NAME':<24} | {'HOURS':<8} | {'GROSS PAY':<12} | {'NET PAY':<12}"
+    report.append(pay_header)
+    report.append("-" * len(pay_header))
+
+    cursor.execute("""
+        SELECT archive_period, name, hours_worked, gross_pay, net_pay 
+        FROM payroll_archives
+        ORDER BY archive_id DESC
+    """)
+    archives = cursor.fetchall()
+
+    if archives:
+        for arch in archives:
+            period = arch[0] or "N/A"
+            name = arch[1] or "N/A"
+            hrs = f"{arch[2]:.1f}" if arch[2] else "0.0"
+            gross = f"PHP {arch[3]:,.2f}" if arch[3] else "PHP 0.00"
+            net = f"PHP {arch[4]:,.2f}" if arch[4] else "PHP 0.00"
+            report.append(f" {period:<10} | {name:<24} | {hrs:<8} | {gross:<12} | {net:<12}")
+    else:
+        report.append(" No historical payroll closeouts recorded yet.")
+
+    report.append("\n============================================================================")
+    report.append("                            *** END OF REPORT ***")
+    report.append("============================================================================")
+
+    conn.close()
+
+    return Response(
+        "\n".join(report),
+        mimetype="text/plain; charset=utf-8",
+        headers={"Content-Disposition": "attachment;filename=Payroll_Report.txt"}
+    )
+
+@app.route('/api/export/csv', methods=['GET'])
+def export_csv_report():
+    """Generates a CSV report ready for Excel."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT e.id, e.name, e.site, e.pos, e.pay_cycle, 
+               IFNULL(p.gross_pay, 0), IFNULL(p.net_pay, 0), IFNULL(p.archive_period, 'PENDING')
+        FROM employees e
+        LEFT JOIN payroll_archives p ON e.id = p.employee_id
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Employee ID', 'Name', 'Site', 'Position', 'Pay Cycle', 'Gross Pay', 'Net Pay', 'Status'])
+
+    for row in rows:
+        writer.writerow(row)
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment;filename=Payroll_Summary.csv"}
+    )
+
+import webbrowser
+from threading import Timer
+
+def open_browser():
+    webbrowser.open_new('http://127.0.0.1:5000/')
 
 # ==========================================
-# 🚀 SYSTEM DEPLOYMENT TRIGGER RUNNER
+# 🚀 APP STARTUP RUNNER
 # ==========================================
-init_db()  
+init_db()
+init_backup_scheduler()
 
-
-app.run(host='127.0.0.1', port=5000, debug=False)
+if __name__ == '__main__':
+    # Automatically launches browser tab 1.5 seconds after app starts
+    Timer(1.5, open_browser).start()
+    app.run(host='127.0.0.1', port=5000, debug=False)
